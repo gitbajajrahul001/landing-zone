@@ -4,3 +4,5 @@
 *.txt
 *sensitive.tf
 *IAM.txt
+*.hcl
+*.backup
