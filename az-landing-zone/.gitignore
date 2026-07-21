@@ -4,5 +4,5 @@
 *.txt
 *sensitive.tf
 *IAM.txt
-*.hcl
-*.backup
+*.terraform.lock.hcl
+*terraform.tfstate.backup
