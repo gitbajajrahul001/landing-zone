@@ -1,0 +1,6 @@
+*.tfstate
+*.terraform
+*.json
+*.txt
+*sensitive.tf
+*IAM.txt
