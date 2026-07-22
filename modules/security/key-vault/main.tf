@@ -27,7 +27,7 @@ resource "azurerm_key_vault_secret" "secret" {
   key_vault_id = azurerm_key_vault.kv.id
 }
 
-resource "azurerm_role_assignment" "key_vault_secrets_user" {
+resource "azurerm_role_assignment" "key_vault_secrets_officer" {
   scope                = azurerm_key_vault.kv.id
   role_definition_name = "Key Vault Secrets Officer"
   principal_id         = var.spn_object_id

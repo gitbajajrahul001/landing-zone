@@ -2,7 +2,7 @@ resource "azurerm_monitor_data_collection_rule" "dcr" {
   name                = var.dcr_name
   location            = var.location
   resource_group_name = var.resource_group_name
-  kind                = "Linux"   # rule is scoped to Linux agent data sources only
+  kind                = var.kind 
 
   destinations {
     log_analytics {
