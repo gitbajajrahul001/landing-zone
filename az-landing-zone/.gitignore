@@ -19,3 +19,4 @@ terraform.tfvars
 
 # Misc
 *IAM.txt
+*.DS_Store
