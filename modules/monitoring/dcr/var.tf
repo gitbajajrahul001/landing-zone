@@ -13,6 +13,16 @@ variable "dcr_name" {
   description = "Name for the Data Collection Rule."
 }
 
+variable "kind" {
+  type        = string
+  description = "OS scope for this DCR -- 'Linux' or 'Windows'. Determines which counter_specifier format and names are valid. Never mix OS types under one DCR."
+
+  validation {
+    condition     = contains(["Linux", "Windows"], var.kind)
+    error_message = "kind must be 'Linux' or 'Windows'."
+  }
+}
+
 variable "workspace_resource_id" {
   type        = string
   description = "Resource ID of the Log Analytics workspace destination."
@@ -20,11 +30,7 @@ variable "workspace_resource_id" {
 
 variable "counters" {
   type        = list(string)
-  description = "Performance counter specifiers to collect. IMPORTANT: format differs by OS. Linux counters have no leading backslash, e.g. 'Memory\\% Used Memory'. Windows counters do, e.g. '\\Memory\\% Committed Bytes In Use'. This DCR is kind=Linux, so use Linux-style specifiers only."
-  default = [
-    "Memory\\% Used Memory",
-    "Memory\\Available MBytes Memory"
-  ]
+  description = "Performance counter specifiers to collect. Format is OS-dependent -- must match var.kind. Linux: no leading backslash, e.g. 'Memory\\% Used Memory'. Windows: leading backslash, e.g. '\\Memory\\% Committed Bytes In Use'. No default on purpose -- pick the right set at the call site for the kind you chose."
 }
 
 variable "sampling_frequency_in_seconds" {
@@ -32,14 +38,9 @@ variable "sampling_frequency_in_seconds" {
   description = "Sampling frequency in seconds for performance counters."
   default     = 900
 }
-/*
-variable "resource_to_associate" {
-  type        = string
-  description = "Resource ID of the VM/VMSS to associate the DCR with."
-}
-*/
+
 variable "resources_to_associate" {
-  description = "List of Azure resource IDs to associate with the DCR."
+  description = "Map of Azure resource IDs to associate with the DCR. Keys are arbitrary labels used in the association resource name."
   type        = map(string)
 }
 

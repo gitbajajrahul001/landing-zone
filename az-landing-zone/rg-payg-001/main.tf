@@ -63,7 +63,7 @@ module "subnets" {
 # Deploys an Ubuntu virtual machine into the Web subnet for application hosting
 # and infrastructure testing.
 # -----------------------------------------------------------------------------
-module "linux_vm_1" {
+module "linux_vm" {
   source              = "../../modules/compute/linux_vm"
   resource_group_name = azurerm_resource_group.rg-payg-001.name
   location            = azurerm_resource_group.rg-payg-001.location
@@ -71,6 +71,7 @@ module "linux_vm_1" {
   vm_name             = "${local.linux_vm_prefix}-1-${local.standard_suffix}"
   subnet_id           = module.subnets.subnet_ids["${local.subnet_prefix}-web-${local.standard_suffix}"]
   vm_size             = "Standard_D2as_v4"
+  admin_password      = var.linux_admin_password
   image_publisher     = "Canonical"
   image_offer         = "ubuntu-24_04-lts"
   image_sku           = "server"
@@ -83,17 +84,24 @@ module "linux_vm_1" {
   }
 }
 
-module "linux_vm_2" {
-  source              = "../../modules/compute/linux_vm"
+
+# -----------------------------------------------------------------------------
+# Windows Virtual Machine
+# Deploys a Windows Server VM into the Web subnet, same tier as the Linux
+# pair, for parity testing of guest-level monitoring across OS types.
+# -----------------------------------------------------------------------------
+module "windows_vm" {
+  source              = "../../modules/compute/windows_vm"
   resource_group_name = azurerm_resource_group.rg-payg-001.name
   location            = azurerm_resource_group.rg-payg-001.location
 
-  vm_name             = "${local.linux_vm_prefix}-2-${local.standard_suffix}"
+  vm_name             = "${local.windows_vm_prefix}-1-${local.standard_suffix}"
   subnet_id           = module.subnets.subnet_ids["${local.subnet_prefix}-web-${local.standard_suffix}"]
   vm_size             = "Standard_D2as_v4"
-  image_publisher     = "Canonical"
-  image_offer         = "ubuntu-24_04-lts"
-  image_sku           = "server"
+  admin_password      = var.windows_admin_password
+  image_publisher     = "MicrosoftWindowsServer"
+  image_offer         = "WindowsServer"
+  image_sku           = "2022-datacenter-azure-edition"
   image_version       = "latest"
   security_type       = "Standard"
   availability_option = "None"
@@ -127,50 +135,47 @@ module "key_vault" {
 # sends them to the Log Analytics Workspace.
 # -----------------------------------------------------------------------------
 
-/*
-module "dcr_agent_perf" {
-  source                        = "../../modules/monitoring/dcr"
-
-  resource_group_name           = azurerm_resource_group.rg-payg-001.name
-  location                      = azurerm_resource_group.rg-payg-001.location
-
-  dcr_name                      = "${local.dcr_prefix}-${local.standard_suffix}"
-
-  workspace_resource_id         = module.law_workspace.workspace_id
-
-  counters                      = [
-    "Memory\\% Used Memory",
-    "Memory\\Available MBytes Memory"
-  ]
-
-  sampling_frequency_in_seconds = 900
-  resource_to_associate         = module.linux_vm.vm_id
-
-  tags = {
-    created_by = "terraform"
-  }
-}
-*/
-
-module "dcr_agent_perf" {
+module "dcr_agent_perf_linux" {
   source = "../../modules/monitoring/dcr"
 
   resource_group_name = azurerm_resource_group.rg-payg-001.name
   location            = azurerm_resource_group.rg-payg-001.location
 
-  dcr_name              = "${local.dcr_prefix}-${local.standard_suffix}"
+  dcr_name              = "${local.dcr_prefix}-linux-${local.standard_suffix}"
+  kind                  = "Linux"
   workspace_resource_id = module.law_workspace.workspace_id
 
-  counters = [
-    "Memory\\% Used Memory",
-    "Memory\\Available MBytes Memory"
-  ]
+  # Linux format: ObjectName then backslash then CounterName, no leading backslash.
+  counters = local.linux_perf_counters
 
-  sampling_frequency_in_seconds = 900
+  sampling_frequency_in_seconds = 300
 
   resources_to_associate = {
-    linux_vm_1 = module.linux_vm_1.vm_id
-    linux_vm_2 = module.linux_vm_2.vm_id
+    linux_vm = module.linux_vm.vm_id
+  }
+
+  tags = {
+    created_by = "terraform"
+  }
+}
+
+module "dcr_agent_perf_windows" {
+  source = "../../modules/monitoring/dcr"
+
+  resource_group_name = azurerm_resource_group.rg-payg-001.name
+  location            = azurerm_resource_group.rg-payg-001.location
+
+  dcr_name              = "${local.dcr_prefix}-windows-${local.standard_suffix}"
+  kind                  = "Windows"
+  workspace_resource_id = module.law_workspace.workspace_id
+
+  # Windows format: leading backslash, ObjectName, backslash, CounterName.
+  counters = local.windows_perf_counters
+
+  sampling_frequency_in_seconds = 300
+
+  resources_to_associate = {
+    windows_vm_1 = module.windows_vm.vm_id
   }
 
   tags = {

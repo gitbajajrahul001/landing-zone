@@ -5,7 +5,7 @@ variable "resource_group_name" {
 
 variable "vm_name" {
   type        = string
-  description = "Name of the virtual machine."
+  description = "Name of the virtual machine. NetBIOS hostname limit is 15 characters for Windows -- longer names get silently truncated by the OS, not rejected by Terraform, so validate upstream."
 }
 
 variable "location" {
@@ -20,13 +20,13 @@ variable "subnet_id" {
 
 variable "admin_username" {
   type        = string
-  description = "Admin username for the VM."
-  default     = "provider"
+  description = "Admin username for the VM. Cannot be 'Administrator', 'admin', 'user', or similar reserved/disallowed names on Windows -- Azure rejects these at deploy time."
+  default     = "vmadmin"
 }
 
 variable "admin_password" {
   type        = string
-  description = "Admin password for the VM. No default on purpose -- supply via Key Vault or a var-file that is never committed."
+  description = "Admin password for the VM. No default on purpose -- supply via Key Vault or a var-file that is never committed. Must meet Windows complexity: 12-123 chars, 3 of (upper/lower/digit/special)."
   sensitive   = true
 }
 
@@ -58,7 +58,7 @@ variable "image_version" {
 variable "os_disk_size_gb" {
   type        = number
   description = "OS disk size in GB."
-  default     = 30
+  default     = 127
 }
 
 variable "os_disk_type" {
@@ -73,25 +73,6 @@ variable "enable_accelerated_networking" {
   default     = false
 }
 
-variable "delete_nic_on_vm_delete" {
-  type        = bool
-  description = "Whether the NIC is deleted when the VM is deleted."
-  default     = true
-}
-
-variable "enable_ultra_disk_compatibility" {
-  type        = bool
-  description = "Whether ultra disk compatibility is enabled on the VM."
-  default     = false
-}
-
-variable "boot_diagnostics_enabled" {
-  type        = bool
-  description = "Whether boot diagnostics is enabled on the VM."
-  default     = false
-}
-
-
 variable "security_type" {
   type        = string
   description = "VM security type. 'Standard' = no trusted launch. 'TrustedLaunch' = enables Secure Boot + vTPM. Requires a Gen2-compatible source image."
@@ -105,31 +86,42 @@ variable "security_type" {
 
 variable "availability_option" {
   type        = string
-  description = "VM placement redundancy. 'None' = no redundancy construct. 'AvailabilityZone' = pin to a specific zone. 'AvailabilitySet' = create/join an availability set (fault + update domains)."
+  description = "VM placement redundancy. 'None' = no redundancy construct. 'AvailabilityZone' = pin to a specific zone."
   default     = "None"
 
   validation {
-    condition     = contains(["None", "AvailabilityZone", "AvailabilitySet"], var.availability_option)
-    error_message = "availability_option must be one of: None, AvailabilityZone, AvailabilitySet."
+    condition     = contains(["None", "AvailabilityZone"], var.availability_option)
+    error_message = "availability_option must be one of: None, AvailabilityZone."
   }
 }
 
 variable "availability_zone" {
   type        = string
-  description = "Zone number ('1', '2', or '3') to pin the VM to. Only used when availability_option = 'AvailabilityZone'. Not every region/size combination supports every zone — validate against az vm list-skus before relying on this in a catalog item."
+  description = "Zone number ('1', '2', or '3') to pin the VM to. Only used when availability_option = 'AvailabilityZone'."
   default     = "1"
 }
 
-variable "availability_set_fault_domain_count" {
-  type        = number
-  description = "Fault domain count for the availability set. Only used when availability_option = 'AvailabilitySet'. Max varies by region (typically 2 or 3)."
-  default     = 2
+variable "license_type" {
+  type        = string
+  description = "Set to 'Windows_Server' to apply Azure Hybrid Benefit (requires eligible on-prem licensing with Software Assurance). Set to 'None' for pay-as-you-go Windows licensing baked into the compute rate."
+  default     = "None"
+
+  validation {
+    condition     = contains(["None", "Windows_Server"], var.license_type)
+    error_message = "license_type must be 'None' or 'Windows_Server'."
+  }
 }
 
-variable "availability_set_update_domain_count" {
-  type        = number
-  description = "Update domain count for the availability set. Only used when availability_option = 'AvailabilitySet'. Max is 20."
-  default     = 5
+variable "patch_mode" {
+  type        = string
+  description = "Guest patch orchestration mode. 'AutomaticByPlatform' delegates to Azure Update Manager."
+  default     = "AutomaticByPlatform"
+}
+
+variable "patch_assessment_mode" {
+  type        = string
+  description = "Must align with patch_mode -- 'AutomaticByPlatform' or 'ImageDefault'."
+  default     = "AutomaticByPlatform"
 }
 
 variable "enable_monitoring_agent" {
@@ -146,4 +138,3 @@ variable "tags" {
     cost-center = ""
   }
 }
-

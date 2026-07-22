@@ -30,6 +30,9 @@ resource "azurerm_linux_virtual_machine" "vm" {
     storage_account_type = var.os_disk_type
     disk_size_gb         = var.os_disk_size_gb
   }
+  identity {
+    type = "SystemAssigned"
+  }
 
   source_image_reference {
     publisher = var.image_publisher
@@ -37,6 +40,20 @@ resource "azurerm_linux_virtual_machine" "vm" {
     sku       = var.image_sku
     version   = var.image_version
   }
+
+  tags = var.tags
+}
+
+resource "azurerm_virtual_machine_extension" "ama" {
+  count = var.enable_monitoring_agent ? 1 : 0
+
+  name                       = "AzureMonitorLinuxAgent"
+  virtual_machine_id         = azurerm_linux_virtual_machine.vm.id
+  publisher                  = "Microsoft.Azure.Monitor"
+  type                       = "AzureMonitorLinuxAgent"
+  type_handler_version       = "1.33"
+  auto_upgrade_minor_version = true
+  automatic_upgrade_enabled  = true
 
   tags = var.tags
 }
