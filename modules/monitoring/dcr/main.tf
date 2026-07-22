@@ -27,9 +27,18 @@ resource "azurerm_monitor_data_collection_rule" "dcr" {
 
   tags = var.tags
 }
-
+/*
 resource "azurerm_monitor_data_collection_rule_association" "assoc" {
   name                     = "${var.dcr_name}-assoc"
   data_collection_rule_id  = azurerm_monitor_data_collection_rule.dcr.id
   target_resource_id       = var.resource_to_associate
+}
+*/
+resource "azurerm_monitor_data_collection_rule_association" "assoc" {
+
+  for_each = var.resources_to_associate
+
+  name                    = "assoc-${each.key}"
+  target_resource_id      = each.value
+  data_collection_rule_id = azurerm_monitor_data_collection_rule.dcr.id
 }

@@ -28,6 +28,7 @@ variable "admin_password" {
   type        = string
   description = "Admin password for the VM."
   sensitive   = true
+  default     = "Comnet@0987654321"
 }
 
 variable "vm_size" {

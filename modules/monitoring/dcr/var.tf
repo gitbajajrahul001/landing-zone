@@ -32,10 +32,15 @@ variable "sampling_frequency_in_seconds" {
   description = "Sampling frequency in seconds for performance counters."
   default     = 900
 }
-
+/*
 variable "resource_to_associate" {
   type        = string
   description = "Resource ID of the VM/VMSS to associate the DCR with."
+}
+*/
+variable "resources_to_associate" {
+  description = "List of Azure resource IDs to associate with the DCR."
+  type        = map(string)
 }
 
 variable "tags" {

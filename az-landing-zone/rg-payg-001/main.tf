@@ -3,6 +3,11 @@ resource "azurerm_resource_group" "rg-payg-001" {
   location = "Central India"
 }
 
+# -----------------------------------------------------------------------------
+# Log Analytics Workspace
+# Centralized workspace for collecting Azure Monitor logs, performance metrics,
+# and telemetry from monitored resources.
+# -----------------------------------------------------------------------------
 module "law_workspace" {
   source = "../../modules/monitoring/law"
 
@@ -11,6 +16,10 @@ module "law_workspace" {
   resource_group_name = azurerm_resource_group.rg-payg-001.name
 }
 
+# -----------------------------------------------------------------------------
+# Virtual Network
+# Creates the landing zone virtual network that hosts all application subnets.
+# -----------------------------------------------------------------------------
 module "vnet" {
   source              = "../../modules/network/vnet"
   vnet_name           = "${local.vnet_prefix}-${local.standard_suffix}"
@@ -19,10 +28,16 @@ module "vnet" {
   address_space       = ["192.168.1.0/24"]
 }
 
+# -----------------------------------------------------------------------------
+# Subnets
+# Creates workload-specific subnets for Web, Application, Database and
+# Private Endpoint resources.
+# -----------------------------------------------------------------------------
 module "subnets" {
   source               = "../../modules/network/subnet"
   resource_group_name  = azurerm_resource_group.rg-payg-001.name
   virtual_network_name = module.vnet.name
+
   subnets = [
     {
       name             = "${local.subnet_prefix}-web-${local.standard_suffix}"
@@ -43,14 +58,18 @@ module "subnets" {
   ]
 }
 
-module "linux_vm" {
+# -----------------------------------------------------------------------------
+# Linux Virtual Machine
+# Deploys an Ubuntu virtual machine into the Web subnet for application hosting
+# and infrastructure testing.
+# -----------------------------------------------------------------------------
+module "linux_vm_1" {
   source              = "../../modules/compute/linux_vm"
   resource_group_name = azurerm_resource_group.rg-payg-001.name
   location            = azurerm_resource_group.rg-payg-001.location
-  vm_name             = "${local.linux_vm_prefix}-${local.standard_suffix}"
+
+  vm_name             = "${local.linux_vm_prefix}-1-${local.standard_suffix}"
   subnet_id           = module.subnets.subnet_ids["${local.subnet_prefix}-web-${local.standard_suffix}"]
-  admin_username      = "provider"
-  admin_password      = "Comnet@123456"
   vm_size             = "Standard_D2as_v4"
   image_publisher     = "Canonical"
   image_offer         = "ubuntu-24_04-lts"
@@ -64,32 +83,107 @@ module "linux_vm" {
   }
 }
 
-module "key_vault" {
-  source              = "../../modules/security/key-vault"
+module "linux_vm_2" {
+  source              = "../../modules/compute/linux_vm"
   resource_group_name = azurerm_resource_group.rg-payg-001.name
   location            = azurerm_resource_group.rg-payg-001.location
-  key_vault_name      = "${local.key_vault_prefix}-${local.standard_suffix}"
-  secret_name         = "${local.key_vault_secret_prefix}-${local.standard_suffix}"
-  secret_value        = var.key_vault_secret_value
-  spn_object_id       = var.spn_object_id
+
+  vm_name             = "${local.linux_vm_prefix}-2-${local.standard_suffix}"
+  subnet_id           = module.subnets.subnet_ids["${local.subnet_prefix}-web-${local.standard_suffix}"]
+  vm_size             = "Standard_D2as_v4"
+  image_publisher     = "Canonical"
+  image_offer         = "ubuntu-24_04-lts"
+  image_sku           = "server"
+  image_version       = "latest"
+  security_type       = "Standard"
+  availability_option = "None"
+  tags = {
+    cost-center = "payg"
+    owner       = "bajajrahul001@gmail.com"
+  }
 }
 
+# -----------------------------------------------------------------------------
+# Azure Key Vault
+# Securely stores secrets and assigns RBAC permissions to the deployment SPN
+# for secret management.
+# -----------------------------------------------------------------------------
+module "key_vault" {
+  source = "../../modules/security/key-vault"
 
+  resource_group_name = azurerm_resource_group.rg-payg-001.name
+  location            = azurerm_resource_group.rg-payg-001.location
+
+  key_vault_name = "${local.key_vault_prefix}-${local.standard_suffix}"
+  secret_name    = "${local.key_vault_secret_prefix}-${local.standard_suffix}"
+  secret_value   = var.key_vault_secret_value
+
+  spn_object_id = var.spn_object_id
+}
+
+# -----------------------------------------------------------------------------
+# Azure Monitor Data Collection Rule
+# Collects guest operating system performance counters from the Linux VM and
+# sends them to the Log Analytics Workspace.
+# -----------------------------------------------------------------------------
+
+/*
 module "dcr_agent_perf" {
   source                        = "../../modules/monitoring/dcr"
+
   resource_group_name           = azurerm_resource_group.rg-payg-001.name
   location                      = azurerm_resource_group.rg-payg-001.location
+
   dcr_name                      = "${local.dcr_prefix}-${local.standard_suffix}"
+
   workspace_resource_id         = module.law_workspace.workspace_id
-  counters                      = ["Memory\\% Used Memory", "Memory\\Available MBytes Memory"] # CHANGED: Windows-style paths -> Linux-style (target is module.linux_vm)
+
+  counters                      = [
+    "Memory\\% Used Memory",
+    "Memory\\Available MBytes Memory"
+  ]
+
   sampling_frequency_in_seconds = 900
   resource_to_associate         = module.linux_vm.vm_id
+
+  tags = {
+    created_by = "terraform"
+  }
+}
+*/
+
+module "dcr_agent_perf" {
+  source = "../../modules/monitoring/dcr"
+
+  resource_group_name = azurerm_resource_group.rg-payg-001.name
+  location            = azurerm_resource_group.rg-payg-001.location
+
+  dcr_name              = "${local.dcr_prefix}-${local.standard_suffix}"
+  workspace_resource_id = module.law_workspace.workspace_id
+
+  counters = [
+    "Memory\\% Used Memory",
+    "Memory\\Available MBytes Memory"
+  ]
+
+  sampling_frequency_in_seconds = 900
+
+  resources_to_associate = {
+    linux_vm_1 = module.linux_vm_1.vm_id
+    linux_vm_2 = module.linux_vm_2.vm_id
+  }
+
   tags = {
     created_by = "terraform"
   }
 }
 
 
+# -----------------------------------------------------------------------------
+# Storage Account
+# Central storage account used to host AI knowledge containers for the
+# Cloud Optimization Advisor.
+# -----------------------------------------------------------------------------
 module "storage_account" {
   source = "../../modules/storage/storage-account"
 
@@ -106,8 +200,8 @@ module "storage_account" {
   public_network_access_enabled   = true
   shared_access_key_enabled       = true
   allow_nested_items_to_be_public = false
-  is_hns_enabled                  = false
 
+  is_hns_enabled   = false
   identity_enabled = false
 
   blob_versioning_enabled         = false
@@ -120,6 +214,11 @@ module "storage_account" {
   }
 }
 
+# -----------------------------------------------------------------------------
+# Knowledge Container
+# Stores AI-generated knowledge and optimization insights related to
+# Virtual Machines.
+# -----------------------------------------------------------------------------
 module "storage_container-1" {
   source = "../../modules/storage/storage-container"
 
@@ -128,6 +227,10 @@ module "storage_container-1" {
   container_access_type = "private"
 }
 
+# -----------------------------------------------------------------------------
+# Resource Group Knowledge Container
+# Stores AI-generated knowledge related to Resource Groups.
+# -----------------------------------------------------------------------------
 module "storage_container-2" {
   source = "../../modules/storage/storage-container"
 
@@ -135,6 +238,11 @@ module "storage_container-2" {
   container_name        = "rg-knowledge-${local.standard_suffix}"
   container_access_type = "private"
 }
+
+# -----------------------------------------------------------------------------
+# Subscription Knowledge Container
+# Stores subscription-wide optimization knowledge and recommendations.
+# -----------------------------------------------------------------------------
 module "storage_container-3" {
   source = "../../modules/storage/storage-container"
 
@@ -142,6 +250,12 @@ module "storage_container-3" {
   container_name        = "sub-knowledge-${local.standard_suffix}"
   container_access_type = "private"
 }
+
+# -----------------------------------------------------------------------------
+# Estate Knowledge Container
+# Stores consolidated cloud estate knowledge, inventory and optimization data
+# across the Azure environment.
+# -----------------------------------------------------------------------------
 module "storage_container-4" {
   source = "../../modules/storage/storage-container"
 
@@ -149,4 +263,3 @@ module "storage_container-4" {
   container_name        = "estate-knowledge-${local.standard_suffix}"
   container_access_type = "private"
 }
-
